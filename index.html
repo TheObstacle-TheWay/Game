@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dodge & Collect</title>
+  <style>
+    :root{
+      --bg:#070b14; --fg:#e8eefc; --muted:#9bb0d9; --line:rgba(255,255,255,.12);
+      --card:rgba(18,26,43,.9);
+      --shadow:0 16px 50px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      background: radial-gradient(1000px 600px at 20% 0%, rgba(122,162,255,.18), transparent 60%),
+                  radial-gradient(1000px 600px at 80% 20%, rgba(96,211,148,.10), transparent 60%),
+                  var(--bg);
+      color:var(--fg);
+      display:flex; min-height:100vh; align-items:center; justify-content:center;
+      padding:18px;
+    }
+    .wrap{max-width:980px; width:100%; display:grid; grid-template-columns: 1fr 320px; gap:14px;}
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .hd{padding:12px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:12px; align-items:center;}
+    .title{font-weight:700; letter-spacing:.2px}
+    .sub{color:var(--muted); font-size:12px}
+    .bd{padding:12px 14px}
+    canvas{width:100%; height:auto; display:block; background:rgba(0,0,0,.25); border-radius:14px; border:1px solid rgba(255,255,255,.10)}
+    .stats{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
+    .stat{
+      padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+    }
+    .k{color:var(--muted); font-size:12px}
+    .v{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:18px; margin-top:4px}
+    .btns{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    button{
+      cursor:pointer;
+      border-radius:12px; border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color:var(--fg);
+      padding:10px 12px;
+      font:inherit;
+    }
+    button:hover{background: rgba(255,255,255,.10)}
+    .primary{border-color: rgba(122,162,255,.45); background: rgba(122,162,255,.14)}
+    .primary:hover{background: rgba(122,162,255,.20)}
+
+    .help{color:var(--muted); font-size:12px; line-height:1.35}
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      font-size:12px; color:var(--muted)
+    }
+    .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    .sep{height:1px; background:rgba(255,255,255,.10); margin:12px 0}
+
+    /* Mobile joystick */
+    .joyWrap{
+      display:none;
+      margin-top:12px;
+      padding:12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+    }
+    .joyArea{
+      position:relative;
+      width:160px; height:160px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      touch-action:none;
+      margin:0 auto;
+    }
+    .joyKnob{
+      position:absolute;
+      left:50%; top:50%;
+      width:58px; height:58px;
+      transform:translate(-50%,-50%);
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(122,162,255,.18);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    @media (max-width: 920px){
+      .wrap{grid-template-columns:1fr}
+      .joyWrap{display:block}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="hd">
+        <div>
+          <div class="title">Dodge & Collect</div>
+          <div class="sub">Collect green. Avoid red. Survive as long as you can.</div>
+        </div>
+        <span class="pill" id="statusPill">Press <b>Start</b></span>
+      </div>
+      <div class="bd">
+        <canvas id="game" width="800" height="520"></canvas>
+
+        <div class="stats">
+          <div class="stat"><div class="k">Score</div><div class="v" id="score">0</div></div>
+          <div class="stat"><div class="k">Best</div><div class="v" id="best">0</div></div>
+          <div class="stat"><div class="k">Lives</div><div class="v" id="lives">3</div></div>
+          <div class="stat"><div class="k">Level</div><div class="v" id="level">1</div></div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="btnStart">Start / Restart</button>
+          <button id="btnPause">Pause</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <div class="hd">
+        <div>
+          <div class="title">Controls</div>
+          <div class="sub">Keyboard or touch</div>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="help">
+          <div class="row">
+            <span class="pill">Move: <b>WASD</b> or <b>Arrow keys</b></span>
+            <span class="pill">Pause: <b>P</b></span>
+          </div>
+          <div class="sep"></div>
+          <div>
+            You are the blue circle.<br/>
+            <b>Green orbs</b> = +10 points.<br/>
+            <b>Red blocks</b> = lose a life.<br/>
+            Every ~15 seconds, the game speeds up.
+          </div>
+        </div>
+
+        <div class="joyWrap">
+          <div class="help" style="margin-bottom:10px;">Touch joystick (mobile)</div>
+          <div class="joyArea" id="joyArea">
+            <div class="joyKnob" id="joyKnob"></div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+        <div class="help">
+          Want a different game? Tell me the vibe:
+          <br/>• endless runner • pong • snake • word game • trivia • strategy
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const scoreEl = document.getElementById("score");
+  const bestEl  = document.getElementById("best");
+  const livesEl = document.getElementById("lives");
+  const levelEl = document.getElementById("level");
+  const statusPill = document.getElementById("statusPill");
+
+  const btnStart = document.getElementById("btnStart");
+  const btnPause = document.getElementById("btnPause");
+
+  // High score
+  const BEST_KEY = "dodge_collect_best";
+  let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  bestEl.textContent = String(best);
+
+  // Game state
+  let running = false;
+  let paused  = false;
+  let lastTs  = 0;
+
+  const world = {
+    w: canvas.width,
+    h: canvas.height,
+    time: 0,
+    level: 1,
+    lives: 3,
+    score: 0,
+    speedMult: 1,
+  };
+
+  const player = {
+    x: world.w * 0.5,
+    y: world.h * 0.7,
+    r: 14,
+    vx: 0,
+    vy: 0,
+    maxSpeed: 320, // px/s
+    accel: 1400,   // px/s^2
+    friction: 0.86
+  };
+
+  function resetGame() {
+    world.time = 0;
+    world.level = 1;
+    world.lives = 3;
+    world.score = 0;
+    world.speedMult = 1;
+
+    player.x = world.w * 0.5;
+    player.y = world.h * 0.7;
+    player.vx = 0;
+    player.vy = 0;
+
+    hazards.length = 0;
+    orbs.length = 0;
+
+    // Spawn a few starters
+    for (let i = 0; i < 4; i++) spawnHazard();
+    for (let i = 0; i < 3; i++) spawnOrb();
+
+    syncUI();
+    statusPill.innerHTML = "Go!";
+  }
+
+  function syncUI() {
+    scoreEl.textContent = String(world.score);
+    bestEl.textContent  = String(best);
+    livesEl.textContent = String(world.lives);
+    levelEl.textContent = String(world.level);
+  }
+
+  // Entities
+  const hazards = []; // red blocks
+  const orbs = [];    // green circles
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+
+  function spawnHazard() {
+    // Spawn at top with downward velocity and slight horizontal drift.
+    const size = rand(18, 42);
+    const x = rand(size, world.w - size);
+    const y = -size - rand(0, 200);
+    const base = 140 + world.level * 16;
+    hazards.push({
+      x, y, w: size, h: size,
+      vx: rand(-60, 60),
+      vy: rand(base, base + 140) * world.speedMult
+    });
+  }
+
+  function spawnOrb() {
+    const r = rand(10, 16);
+    const x = rand(r, world.w - r);
+    const y = -r - rand(0, 260);
+    const base = 110 + world.level * 10;
+    orbs.push({
+      x, y, r,
+      vx: rand(-30, 30),
+      vy: rand(base, base + 120) * world.speedMult
+    });
+  }
+
+  // Controls
+  const keys = new Set();
+  window.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d","p"," "].includes(k)) {
+      e.preventDefault();
+    }
+    if (k === "p") togglePause();
+    keys.add(k);
+  });
+  window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+  // Touch joystick (mobile)
+  const joyArea = document.getElementById("joyArea");
+  const joyKnob = document.getElementById("joyKnob");
+  let joyActive = false;
+  let joyVec = {x:0,y:0};
+
+  function setKnob(nx, ny){
+    // nx, ny in [-1,1]
+    const radius = 52;
+    joyKnob.style.left = `${50 + nx * (radius/80)*50}%`;
+    joyKnob.style.top  = `${50 + ny * (radius/80)*50}%`;
+  }
+  function resetKnob(){ joyKnob.style.left="50%"; joyKnob.style.top="50%"; }
+
+  if (joyArea) {
+    const onDown = (e) => {
+      joyActive = true;
+      joyArea.setPointerCapture(e.pointerId);
+      onMove(e);
+    };
+    const onMove = (e) => {
+      if (!joyActive) return;
+      const rect = joyArea.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      const dx = (e.clientX - cx);
+      const dy = (e.clientY - cy);
+      const max = rect.width * 0.33;
+      const nx = Math.max(-1, Math.min(1, dx / max));
+      const ny = Math.max(-1, Math.min(1, dy / max));
+      joyVec = {x:nx, y:ny};
+      setKnob(nx, ny);
+    };
+    const onUp = () => {
+      joyActive = false;
+      joyVec = {x:0,y:0};
+      resetKnob();
+    };
+
+    joyArea.addEventListener("pointerdown", onDown);
+    joyArea.addEventListener("pointermove", onMove);
+    joyArea.addEventListener("pointerup", onUp);
+    joyArea.addEventListener("pointercancel", onUp);
+    joyArea.addEventListener("pointerleave", onUp);
+  }
+
+  function togglePause(){
+    if (!running) return;
+    paused = !paused;
+    statusPill.innerHTML = paused ? "Paused" : "Go!";
+    btnPause.textContent = paused ? "Resume" : "Pause";
+  }
+
+  btnStart.addEventListener("click", () => {
+    running = true;
+    paused = false;
+    btnPause.textContent = "Pause";
+    resetGame();
+    lastTs = performance.now();
+    requestAnimationFrame(loop);
+  });
+
+  btnPause.addEventListener("click", () => togglePause());
+
+  function endGame() {
+    running = false;
+    paused = false;
+    statusPill.innerHTML = `Game Over — press <b>Start</b>`;
+    btnPause.textContent = "Pause";
+    if (world.score > best) {
+      best = world.score;
+      localStorage.setItem(BEST_KEY, String(best));
+    }
+    syncUI();
+  }
+
+  function circleRectCollide(cx, cy, r, rx, ry, rw, rh){
+    // closest point on rect to circle center
+    const px = Math.max(rx, Math.min(cx, rx + rw));
+    const py = Math.max(ry, Math.min(cy, ry + rh));
+    const dx = cx - px;
+    const dy = cy - py;
+    return (dx*dx + dy*dy) <= r*r;
+  }
+
+  function circleCircleCollide(ax, ay, ar, bx, by, br){
+    const dx = ax - bx, dy = ay - by;
+    const rr = ar + br;
+    return dx*dx + dy*dy <= rr*rr;
+  }
+
+  function update(dt){
+    world.time += dt;
+
+    // Level up every 15 seconds
+    const newLevel = 1 + Math.floor(world.time / 15);
+    if (newLevel !== world.level) {
+      world.level = newLevel;
+      world.speedMult = 1 + (world.level - 1) * 0.08;
+      // Increase spawn pressure a bit
+      spawnHazard();
+      if (world.level % 2 === 0) spawnOrb();
+    }
+
+    // Movement input
+    let ax = 0, ay = 0;
+
+    if (keys.has("arrowleft") || keys.has("a")) ax -= 1;
+    if (keys.has("arrowright") || keys.has("d")) ax += 1;
+    if (keys.has("arrowup") || keys.has("w")) ay -= 1;
+    if (keys.has("arrowdown") || keys.has("s")) ay += 1;
+
+    // Touch joystick adds continuous input
+    ax += joyVec.x;
+    ay += joyVec.y;
+
+    // Normalize
+    const len = Math.hypot(ax, ay);
+    if (len > 1e-6) { ax /= len; ay /= len; }
+
+    // Apply accel + friction
+    player.vx += ax * player.accel * dt;
+    player.vy += ay * player.accel * dt;
+
+    player.vx *= Math.pow(player.friction, dt * 60);
+    player.vy *= Math.pow(player.friction, dt * 60);
+
+    // Clamp speed
+    const sp = Math.hypot(player.vx, player.vy);
+    const max = player.maxSpeed;
+    if (sp > max) {
+      const s = max / sp;
+      player.vx *= s;
+      player.vy *= s;
+    }
+
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+
+    // Keep in bounds
+    player.x = Math.max(player.r, Math.min(world.w - player.r, player.x));
+    player.y = Math.max(player.r, Math.min(world.h - player.r, player.y));
+
+    // Update hazards
+    for (const h of hazards) {
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+
+      // bounce off side walls a bit
+      if (h.x < 0) { h.x = 0; h.vx *= -1; }
+      if (h.x + h.w > world.w) { h.x = world.w - h.w; h.vx *= -1; }
+    }
+
+    // Update orbs
+    for (const o of orbs) {
+      o.x += o.vx * dt;
+      o.y += o.vy * dt;
+      if (o.x < o.r) { o.x = o.r; o.vx *= -1; }
+      if (o.x > world.w - o.r) { o.x = world.w - o.r; o.vx *= -1; }
+    }
+
+    // Recycle off-screen and maintain counts based on level
+    const desiredHaz = 4 + Math.min(10, Math.floor(world.level * 0.9));
+    const desiredOrb = 3 + Math.min(6, Math.floor(world.level * 0.4));
+
+    for (let i = hazards.length - 1; i >= 0; i--) {
+      if (hazards[i].y > world.h + 120) hazards.splice(i, 1);
+    }
+    while (hazards.length < desiredHaz) spawnHazard();
+
+    for (let i = orbs.length - 1; i >= 0; i--) {
+      if (orbs[i].y > world.h + 120) orbs.splice(i, 1);
+    }
+    while (orbs.length < desiredOrb) spawnOrb();
+
+    // Collisions: player vs hazards
+    for (let i = hazards.length - 1; i >= 0; i--) {
+      const h = hazards[i];
+      if (circleRectCollide(player.x, player.y, player.r, h.x, h.y, h.w, h.h)) {
+        hazards.splice(i, 1);
+        world.lives -= 1;
+        // small knockback
+        player.vx *= -0.35;
+        player.vy *= -0.35;
+        if (world.lives <= 0) {
+          syncUI();
+          endGame();
+          return;
+        }
+        syncUI();
+      }
+    }
+
+    // Collisions: player vs orbs
+    for (let i = orbs.length - 1; i >= 0; i--) {
+      const o = orbs[i];
+      if (circleCircleCollide(player.x, player.y, player.r, o.x, o.y, o.r)) {
+        orbs.splice(i, 1);
+        world.score += 10;
+        // occasional bonus
+        if (Math.random() < 0.08) world.score += 20;
+        syncUI();
+      }
+    }
+  }
+
+  function draw(){
+    // clear
+    ctx.clearRect(0, 0, world.w, world.h);
+
+    // subtle grid
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 1;
+    for (let x = 40; x < world.w; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, world.h); ctx.stroke();
+    }
+    for (let y = 40; y < world.h; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(world.w, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // orbs (green)
+    for (const o of orbs) {
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(96,211,148,.85)";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(o.x - o.r*0.25, o.y - o.r*0.25, o.r*0.35, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,.22)";
+      ctx.fill();
+    }
+
+    // hazards (red)
+    for (const h of hazards) {
+      ctx.fillStyle = "rgba(255,107,107,.85)";
+      ctx.fillRect(h.x, h.y, h.w, h.h);
+
+      ctx.strokeStyle = "rgba(255,255,255,.16)";
+      ctx.strokeRect(h.x + 1, h.y + 1, h.w - 2, h.h - 2);
+    }
+
+    // player (blue)
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(122,162,255,.92)";
+    ctx.fill();
+
+    // player highlight
+    ctx.beginPath();
+    ctx.arc(player.x - player.r*0.3, player.y - player.r*0.3, player.r*0.35, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,.20)";
+    ctx.fill();
+
+    // top HUD inside canvas
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    ctx.fillRect(10, 10, 240, 32);
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    ctx.fillText(`Score ${world.score}   Lives ${world.lives}   Lvl ${world.level}`, 18, 31);
+    ctx.restore();
+
+    // paused overlay
+    if (paused) {
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(0, 0, world.w, world.h);
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.font = "28px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Paused", world.w/2 - 44, world.h/2);
+      ctx.restore();
+    }
+
+    // start overlay when not running
+    if (!running) {
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(0, 0, world.w, world.h);
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.font = "28px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Press Start", world.w/2 - 72, world.h/2);
+      ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillStyle = "rgba(255,255,255,.70)";
+      ctx.fillText("Collect green • avoid red", world.w/2 - 86, world.h/2 + 26);
+      ctx.restore();
+    }
+  }
+
+  function loop(ts){
+    if (!running) return;
+    const dt = Math.min(0.033, (ts - lastTs) / 1000);
+    lastTs = ts;
+
+    if (!paused) update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // Start screen
+  statusPill.innerHTML = "Press <b>Start</b>";
+
+})();
+</script>
+</body>
+</html>
