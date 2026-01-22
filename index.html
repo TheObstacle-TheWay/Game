@@ -104,7 +104,7 @@
       <div class="hd">
         <div>
           <div class="title">Dodge & Collect</div>
-          <div class="sub">Collect imaging tokens. Avoid red blocks. Survive as long as you can.</div>
+          <div class="sub">Collect imaging tokens. Avoid black jelly beans. Survive as long as you can.</div>
         </div>
         <span class="pill" id="statusPill">Press <b>Start</b></span>
       </div>
@@ -153,7 +153,7 @@
             <b>Ultrasound triangle</b> = +20<br/>
             <b>CT square</b> = +30<br/>
             <b>MRI pentagon</b> = +40<br/>
-            <b>Red blocks</b> = lose a life.<br/>
+            <b>Black jelly beans</b>, your boss taught you wrong = lose a life<br/>
             Levels are based on <b>score</b> (not time).
           </div>
         </div>
@@ -252,20 +252,8 @@
     11: "BOSS BOSS"
   };
 
-  const levelBanner = {
-    active: false,
-    t: 0,
-    dur: 2.0,
-    level: 1,
-    title: ""
-  };
-
-  // Start banner (Welcome message)
-  const startBanner = {
-    active: true,
-    t: 0,
-    dur: 2.2
-  };
+  const levelBanner = { active:false, t:0, dur:2.0, level:1, title:"" };
+  const startBanner = { active:true, t:0, dur:2.2 };
 
   function showLevelBanner(level) {
     levelBanner.active = true;
@@ -273,15 +261,11 @@
     levelBanner.level = level;
     levelBanner.title = levelTitles[level] || "";
   }
-
-  function showStartBanner() {
-    startBanner.active = true;
-    startBanner.t = 0;
-  }
+  function showStartBanner() { startBanner.active = true; startBanner.t = 0; }
 
   function rand(min, max) { return min + Math.random() * (max - min); }
 
-  // ========= Image packs (20+ each) from Wikimedia Commons =========
+  // ========= Image packs from Wikimedia Commons (5 each) =========
   const PACKS = {
     xray: { category: "Category:X-rays_of_the_chest", urls: [], images: [], ready: false },
     us:   { category: "Category:Medical_ultrasound", urls: [], images: [], ready: false },
@@ -295,7 +279,7 @@
     return `${base}?${q.toString()}`;
   }
 
-  async function fetchCategoryFileTitles(category, limit = 80) {
+  async function fetchCategoryFileTitles(category, limit = 25) {
     const url = commonsApi({
       action: "query",
       list: "categorymembers",
@@ -309,26 +293,36 @@
     return members.map(m => m.title).filter(t => /^File:/i.test(t));
   }
 
+  // Chunked to avoid overlong URLs
   async function fetchFileImageUrls(fileTitles) {
     if (!fileTitles.length) return [];
-    const url = commonsApi({
-      action: "query",
-      prop: "imageinfo",
-      iiprop: "url",
-      titles: fileTitles.join("|")
-    });
-    const r = await fetch(url);
-    const j = await r.json();
-    const pages = j?.query?.pages || {};
-    const urls = [];
-    for (const k of Object.keys(pages)) {
-      const info = pages[k]?.imageinfo?.[0];
-      if (info?.url) urls.push(info.url);
+    const CHUNK = 20;
+    const allUrls = [];
+
+    for (let i = 0; i < fileTitles.length; i += CHUNK) {
+      const slice = fileTitles.slice(i, i + CHUNK);
+
+      const url = commonsApi({
+        action: "query",
+        prop: "imageinfo",
+        iiprop: "url",
+        titles: slice.join("|")
+      });
+
+      const r = await fetch(url);
+      const j = await r.json();
+      const pages = j?.query?.pages || {};
+
+      for (const k of Object.keys(pages)) {
+        const info = pages[k]?.imageinfo?.[0];
+        if (info?.url) allUrls.push(info.url);
+      }
     }
-    return urls;
+
+    return allUrls;
   }
 
-  function preloadImages(urls, want = 20) {
+  function preloadImages(urls, want = 5) {
     return new Promise((resolve) => {
       const images = [];
       let idx = 0;
@@ -344,44 +338,41 @@
         img.src = u;
       }
 
-      const parallel = 6;
+      const parallel = 4;
       for (let i = 0; i < parallel; i++) loadNext();
     });
   }
 
-  async function ensurePackReady(packKey, want = 20) {
+  async function ensurePackReady(packKey, want = 5) {
     const pack = PACKS[packKey];
     if (!pack || pack.ready) return;
 
     try {
-      const titles = await fetchCategoryFileTitles(pack.category, 80);
+      const titles = await fetchCategoryFileTitles(pack.category, 25);
       const urls = await fetchFileImageUrls(titles);
 
       pack.urls = urls;
       pack.images = await preloadImages(urls, want);
       pack.ready = pack.images.length >= 1;
     } catch (e) {
+      console.error("Pack load failed:", packKey, e);
       pack.ready = false;
     }
   }
 
-  function ensureAllPacksReady() {
-    ensurePackReady("xray", 20);
-    ensurePackReady("us", 20);
-    ensurePackReady("ct", 20);
-    ensurePackReady("mri", 20);
-  }
+  const hazards = [];
+  const pickups = [];
+  const popups  = [];
+
+  // Equal probability for each token type (25% each)
+  const TOKEN_TYPES = ["xray_token", "us_triangle", "ct_square", "mri_pentagon"];
+  function pickTypeEqual() { return TOKEN_TYPES[(Math.random() * TOKEN_TYPES.length) | 0]; }
 
   function pickFromPack(packKey) {
     const p = PACKS[packKey];
     if (!p?.images?.length) return null;
     return p.images[(Math.random() * p.images.length) | 0];
   }
-
-  // Entities
-  const hazards = [];
-  const pickups = [];
-  const popups  = [];
 
   function resetGame() {
     world.level = 1;
@@ -398,7 +389,6 @@
     pickups.length = 0;
     popups.length  = 0;
 
-    // starters
     for (let i = 0; i < 4; i++) spawnHazard();
     for (let i = 0; i < 6; i++) spawnPickup();
 
@@ -415,7 +405,7 @@
   }
 
   function spawnHazard() {
-    const size = rand(18, 42);
+    const size = rand(22, 48);
     const x = rand(0, world.w - size);
     const y = -size - rand(0, 200);
     const base = 140 + world.level * 14;
@@ -426,22 +416,17 @@
     });
   }
 
-  // Equal probability for each token type (25% each)
-  const TOKEN_TYPES = ["xray_token", "us_triangle", "ct_square", "mri_pentagon"];
-  function pickTypeEqual() {
-    return TOKEN_TYPES[(Math.random() * TOKEN_TYPES.length) | 0];
-  }
-
   function spawnPickup() {
     const type = pickTypeEqual();
 
+    // DOUBLE token sizes
     const spec = (() => {
       switch (type) {
-        case "xray_token":   return { score: 10, size: rand(12, 18), imgKey: "xray" };
-        case "us_triangle":  return { score: 20, size: rand(14, 20), imgKey: "us" };
-        case "ct_square":    return { score: 30, size: rand(14, 20), imgKey: "ct" };
-        case "mri_pentagon": return { score: 40, size: rand(15, 22), imgKey: "mri" };
-        default:             return { score: 10, size: rand(12, 18), imgKey: "xray" };
+        case "xray_token":   return { score: 10, size: rand(24, 36), imgKey: "xray" };
+        case "us_triangle":  return { score: 20, size: rand(28, 40), imgKey: "us"  };
+        case "ct_square":    return { score: 30, size: rand(28, 40), imgKey: "ct"  };
+        case "mri_pentagon": return { score: 40, size: rand(30, 44), imgKey: "mri" };
+        default:             return { score: 10, size: rand(24, 36), imgKey: "xray" };
       }
     })();
 
@@ -485,7 +470,10 @@
   }
   function resetKnob(){ joyKnob.style.left="50%"; joyKnob.style.top="50%"; }
 
+  // Make Safari happier about touch
   if (joyArea) {
+    joyArea.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
     const onDown = (e) => { joyActive = true; joyArea.setPointerCapture(e.pointerId); onMove(e); };
     const onMove = (e) => {
       if (!joyActive) return;
@@ -501,6 +489,7 @@
       setKnob(nx, ny);
     };
     const onUp = () => { joyActive = false; joyVec = {x:0,y:0}; resetKnob(); };
+
     joyArea.addEventListener("pointerdown", onDown);
     joyArea.addEventListener("pointermove", onMove);
     joyArea.addEventListener("pointerup", onUp);
@@ -515,6 +504,7 @@
     btnPause.textContent = paused ? "Resume" : "Pause";
   }
 
+  // Start: wait for images before game begins
   btnStart.addEventListener("click", async () => {
     running = true;
     paused = false;
@@ -525,7 +515,18 @@
       try { await audioCtx.resume(); } catch {}
     }
 
-    ensureAllPacksReady();
+    statusPill.innerHTML = "Loading images…";
+
+    await Promise.all([
+      ensurePackReady("xray", 5),
+      ensurePackReady("us", 5),
+      ensurePackReady("ct", 5),
+      ensurePackReady("mri", 5),
+    ]);
+
+    statusPill.innerHTML =
+      `Images loaded: XR ${PACKS.xray.images.length} • US ${PACKS.us.images.length} • CT ${PACKS.ct.images.length} • MRI ${PACKS.mri.images.length}`;
+
     resetGame();
     lastTs = performance.now();
     requestAnimationFrame(loop);
@@ -590,9 +591,13 @@
     ctx.clip();
 
     const iw = img.naturalWidth, ih = img.naturalHeight;
-    const target = size * 2.2;
+
+    // Bigger zoom inside the shape
+    const target = size * 3.2;
+
     const scale = Math.max(target / iw, target / ih);
     const dw = iw * scale, dh = ih * scale;
+
     ctx.globalAlpha = 0.95;
     ctx.drawImage(img, x - dw/2, y - dh/2, dw, dh);
 
@@ -600,30 +605,89 @@
     return true;
   }
 
+  // Jelly bean hazard draw
+  function drawJellyBean(x, y, w, h) {
+    ctx.save();
+
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const rx = w / 2;
+    const ry = h / 2;
+
+    ctx.translate(cx, cy);
+    ctx.rotate(0.35);
+
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.6, -ry);
+    ctx.bezierCurveTo(
+      rx * 0.9, -ry,
+      rx * 1.1, ry * 0.6,
+      rx * 0.3, ry
+    );
+    ctx.bezierCurveTo(
+      -rx * 1.1, ry * 1.1,
+      -rx * 1.1, -ry * 0.2,
+      -rx * 0.6, -ry
+    );
+    ctx.closePath();
+
+    ctx.fillStyle = "rgba(15,15,15,0.95)";
+    ctx.fill();
+
+    // glossy highlight
+    ctx.beginPath();
+    ctx.ellipse(-rx * 0.2, -ry * 0.3, rx * 0.25, ry * 0.35, -0.3, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Joystick shaping for DIRECT velocity mode
+  function shapeStick(v){
+    const dead = 0.10;
+    const s = Math.max(0, Math.abs(v) - dead) / (1 - dead);
+    const curved = Math.pow(s, 0.55);
+    return Math.sign(v) * curved;
+  }
+
   function update(dt){
-    // movement input
+    // keyboard
     let ax = 0, ay = 0;
     if (keys.has("arrowleft") || keys.has("a")) ax -= 1;
     if (keys.has("arrowright") || keys.has("d")) ax += 1;
     if (keys.has("arrowup") || keys.has("w")) ay -= 1;
     if (keys.has("arrowdown") || keys.has("s")) ay += 1;
 
-    ax += joyVec.x;
-    ay += joyVec.y;
+    // joystick (direct)
+    const jx = shapeStick(joyVec.x);
+    const jy = shapeStick(joyVec.y);
+    const stickMag = Math.hypot(jx, jy);
 
-    const len = Math.hypot(ax, ay);
-    if (len > 1e-6) { ax /= len; ay /= len; }
+    if (stickMag > 0.001) {
+      const targetVx = jx * player.maxSpeed;
+      const targetVy = jy * player.maxSpeed;
 
-    player.vx += ax * player.accel * dt;
-    player.vy += ay * player.accel * dt;
+      const snap = 22;
+      const k = 1 - Math.exp(-snap * dt);
 
-    player.vx *= Math.pow(player.friction, dt * 60);
-    player.vy *= Math.pow(player.friction, dt * 60);
+      player.vx += (targetVx - player.vx) * k;
+      player.vy += (targetVy - player.vy) * k;
+    } else {
+      const len = Math.hypot(ax, ay);
+      if (len > 1e-6) { ax /= len; ay /= len; }
 
-    const sp = Math.hypot(player.vx, player.vy);
-    if (sp > player.maxSpeed) {
-      const s = player.maxSpeed / sp;
-      player.vx *= s; player.vy *= s;
+      player.vx += ax * player.accel * dt;
+      player.vy += ay * player.accel * dt;
+
+      player.vx *= Math.pow(player.friction, dt * 60);
+      player.vy *= Math.pow(player.friction, dt * 60);
+
+      const sp = Math.hypot(player.vx, player.vy);
+      if (sp > player.maxSpeed) {
+        const s = player.maxSpeed / sp;
+        player.vx *= s; player.vy *= s;
+      }
     }
 
     player.x += player.vx * dt;
@@ -632,7 +696,7 @@
     player.x = Math.max(player.r, Math.min(world.w - player.r, player.x));
     player.y = Math.max(player.r, Math.min(world.h - player.r, player.y));
 
-    // hazards update
+    // hazards
     for (const h of hazards) {
       h.x += h.vx * dt;
       h.y += h.vy * dt;
@@ -640,7 +704,7 @@
       if (h.x + h.w > world.w) { h.x = world.w - h.w; h.vx *= -1; }
     }
 
-    // pickups update
+    // pickups
     for (const p of pickups) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -649,7 +713,7 @@
       if (p.x > world.w - r) { p.x = world.w - r; p.vx *= -1; }
     }
 
-    // Maintain counts (fewer reds)
+    // Maintain counts (fewer hazards)
     const desiredHaz = 3 + Math.min(8, Math.floor(world.level * 0.55));
     const desiredPickups = 7 + Math.min(10, Math.floor(world.level * 0.65));
 
@@ -663,10 +727,15 @@
     }
     while (pickups.length < desiredPickups) spawnPickup();
 
-    // Collisions: hazards
+    // Collisions: hazards (slightly forgiving bounds)
     for (let i = hazards.length - 1; i >= 0; i--) {
       const h = hazards[i];
-      if (circleRectCollide(player.x, player.y, player.r, h.x, h.y, h.w, h.h)) {
+      const hit = circleRectCollide(
+        player.x, player.y, player.r * 0.9,
+        h.x + h.w * 0.1, h.y + h.h * 0.1,
+        h.w * 0.8, h.h * 0.8
+      );
+      if (hit) {
         hazards.splice(i, 1);
         world.lives -= 1;
         player.vx *= -0.35;
@@ -698,7 +767,7 @@
       }
     }
 
-    // Score-based level check
+    // Level check
     const newLevel = levelFromScore(world.score);
     if (newLevel !== world.level) {
       world.level = newLevel;
@@ -714,7 +783,7 @@
       syncUI();
     }
 
-    // Update popups
+    // popups
     for (let i = popups.length - 1; i >= 0; i--) {
       const p = popups[i];
       p.t += dt;
@@ -722,7 +791,7 @@
       if (p.t >= p.life) popups.splice(i, 1);
     }
 
-    // Update banners
+    // banners
     if (levelBanner.active) {
       levelBanner.t += dt;
       if (levelBanner.t >= levelBanner.dur) levelBanner.active = false;
@@ -755,45 +824,30 @@
 
       if (p.type === "xray_token") {
         const ok = drawImageClippedToPath(p.img, pathCircle, p.x, p.y, p.size);
-        if (!ok) {
-          ctx.beginPath(); pathCircle(p.x, p.y, p.size);
-          ctx.fillStyle = "rgba(96,211,148,.85)"; ctx.fill();
-        }
+        if (!ok) { ctx.beginPath(); pathCircle(p.x, p.y, p.size); ctx.fillStyle = "rgba(96,211,148,.85)"; ctx.fill(); }
         ctx.beginPath(); pathCircle(p.x, p.y, p.size);
         ctx.strokeStyle = "rgba(96,211,148,.75)"; ctx.lineWidth = 2; ctx.stroke();
       } else if (p.type === "us_triangle") {
         const ok = drawImageClippedToPath(p.img, pathTriangle, p.x, p.y, p.size);
-        if (!ok) {
-          ctx.fillStyle = "rgba(255,209,102,.92)";
-          ctx.beginPath(); pathTriangle(p.x, p.y, p.size); ctx.fill();
-        }
+        if (!ok) { ctx.fillStyle = "rgba(255,209,102,.92)"; ctx.beginPath(); pathTriangle(p.x, p.y, p.size); ctx.fill(); }
         ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 2;
         ctx.beginPath(); pathTriangle(p.x, p.y, p.size); ctx.stroke();
       } else if (p.type === "ct_square") {
         const ok = drawImageClippedToPath(p.img, pathSquare, p.x, p.y, p.size);
-        if (!ok) {
-          ctx.fillStyle = "rgba(96,211,148,.95)";
-          ctx.beginPath(); pathSquare(p.x, p.y, p.size); ctx.fill();
-        }
+        if (!ok) { ctx.fillStyle = "rgba(96,211,148,.95)"; ctx.beginPath(); pathSquare(p.x, p.y, p.size); ctx.fill(); }
         ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 2;
         ctx.beginPath(); pathSquare(p.x, p.y, p.size); ctx.stroke();
       } else if (p.type === "mri_pentagon") {
         const ok = drawImageClippedToPath(p.img, pathPentagon, p.x, p.y, p.size);
-        if (!ok) {
-          ctx.fillStyle = "rgba(255,159,64,.92)";
-          ctx.beginPath(); pathPentagon(p.x, p.y, p.size); ctx.fill();
-        }
+        if (!ok) { ctx.fillStyle = "rgba(255,159,64,.92)"; ctx.beginPath(); pathPentagon(p.x, p.y, p.size); ctx.fill(); }
         ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 2;
         ctx.beginPath(); pathPentagon(p.x, p.y, p.size); ctx.stroke();
       }
     }
 
-    // hazards
+    // hazards = black jelly beans
     for (const h of hazards) {
-      ctx.fillStyle = "rgba(255,107,107,.85)";
-      ctx.fillRect(h.x, h.y, h.w, h.h);
-      ctx.strokeStyle = "rgba(255,255,255,.16)";
-      ctx.strokeRect(h.x + 1, h.y + 1, h.w - 2, h.h - 2);
+      drawJellyBean(h.x, h.y, h.w, h.h);
     }
 
     // player
@@ -913,7 +967,6 @@
     requestAnimationFrame(loop);
   }
 
-  // init
   statusPill.innerHTML = "Press <b>Start</b>";
 })();
 </script>
