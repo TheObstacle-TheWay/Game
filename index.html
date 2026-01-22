@@ -64,7 +64,7 @@
     .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
     .sep{height:1px; background:rgba(255,255,255,.10); margin:12px 0}
 
-    /* Mobile joystick */
+    /* Joystick under buttons */
     .joyWrap{
       display:none;
       margin-top:12px;
@@ -75,7 +75,7 @@
     }
     .joyArea{
       position:relative;
-      width:160px; height:160px;
+      width:150px; height:150px;
       border-radius:999px;
       border:1px solid rgba(255,255,255,.12);
       background: rgba(0,0,0,.18);
@@ -85,7 +85,7 @@
     .joyKnob{
       position:absolute;
       left:50%; top:50%;
-      width:58px; height:58px;
+      width:52px; height:52px;
       transform:translate(-50%,-50%);
       border-radius:999px;
       border:1px solid rgba(255,255,255,.18);
@@ -104,7 +104,7 @@
       <div class="hd">
         <div>
           <div class="title">Dodge & Collect</div>
-          <div class="sub">Collect green. Avoid red. Survive as long as you can.</div>
+          <div class="sub">Collect imaging tokens. Avoid red blocks. Survive as long as you can.</div>
         </div>
         <span class="pill" id="statusPill">Press <b>Start</b></span>
       </div>
@@ -121,6 +121,14 @@
         <div class="btns">
           <button class="primary" id="btnStart">Start / Restart</button>
           <button id="btnPause">Pause</button>
+        </div>
+
+        <div class="joyWrap">
+          <div class="help" style="margin:0 0 10px;">Touch joystick</div>
+          <div class="joyArea" id="joyArea">
+            <div class="joyKnob" id="joyKnob"></div>
+          </div>
+          <div class="help" style="margin-top:10px;">Tip: use your thumb here while watching the play area above.</div>
         </div>
       </div>
     </section>
@@ -141,23 +149,13 @@
           <div class="sep"></div>
           <div>
             You are the blue circle.<br/>
-            <b>Green orbs</b> = +10 points.<br/>
+            <b>X-ray token</b> = +10<br/>
+            <b>Ultrasound triangle</b> = +20<br/>
+            <b>CT square</b> = +30<br/>
+            <b>MRI pentagon</b> = +40<br/>
             <b>Red blocks</b> = lose a life.<br/>
-            Every ~15 seconds, the game speeds up.
+            Levels are based on <b>score</b> (not time).
           </div>
-        </div>
-
-        <div class="joyWrap">
-          <div class="help" style="margin-bottom:10px;">Touch joystick (mobile)</div>
-          <div class="joyArea" id="joyArea">
-            <div class="joyKnob" id="joyKnob"></div>
-          </div>
-        </div>
-
-        <div class="sep"></div>
-        <div class="help">
-          Want a different game? Tell me the vibe:
-          <br/>• endless runner • pong • snake • word game • trivia • strategy
         </div>
       </div>
     </aside>
@@ -182,6 +180,31 @@
   let best = Number(localStorage.getItem(BEST_KEY) || 0);
   bestEl.textContent = String(best);
 
+  // Audio (ding)
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  function ding() {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+
+    o.type = "sine";
+    o.frequency.setValueAtTime(880, t0);
+    o.frequency.exponentialRampToValueAtTime(1320, t0 + 0.08);
+
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start(t0);
+    o.stop(t0 + 0.24);
+  }
+
   // Game state
   let running = false;
   let paused  = false;
@@ -190,7 +213,6 @@
   const world = {
     w: canvas.width,
     h: canvas.height,
-    time: 0,
     level: 1,
     lives: 3,
     score: 0,
@@ -203,13 +225,165 @@
     r: 14,
     vx: 0,
     vy: 0,
-    maxSpeed: 320, // px/s
-    accel: 1400,   // px/s^2
+    maxSpeed: 320 * 1.3,
+    accel: 1400 * 1.3,
     friction: 0.86
   };
 
+  // Score-based leveling
+  const POINTS_PER_LEVEL = 150;
+  const MAX_LEVEL = 11;
+  function levelFromScore(score){
+    const lvl = 1 + Math.floor(score / POINTS_PER_LEVEL);
+    return Math.max(1, Math.min(MAX_LEVEL, lvl));
+  }
+
+  // Level-up banner
+  const levelTitles = {
+    2: "intern",
+    3: "resident",
+    4: "junior registrar",
+    5: "senior registrar",
+    6: "Fellow",
+    7: "Junior Consultant on Fellow Pay",
+    8: "Junior Consultant",
+    9: "Middle Career Boss",
+    10: "Big Boss",
+    11: "BOSS BOSS"
+  };
+
+  const levelBanner = {
+    active: false,
+    t: 0,
+    dur: 2.0,
+    level: 1,
+    title: ""
+  };
+
+  // Start banner (Welcome message)
+  const startBanner = {
+    active: true,
+    t: 0,
+    dur: 2.2
+  };
+
+  function showLevelBanner(level) {
+    levelBanner.active = true;
+    levelBanner.t = 0;
+    levelBanner.level = level;
+    levelBanner.title = levelTitles[level] || "";
+  }
+
+  function showStartBanner() {
+    startBanner.active = true;
+    startBanner.t = 0;
+  }
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+
+  // ========= Image packs (20+ each) from Wikimedia Commons =========
+  const PACKS = {
+    xray: { category: "Category:X-rays_of_the_chest", urls: [], images: [], ready: false },
+    us:   { category: "Category:Medical_ultrasound", urls: [], images: [], ready: false },
+    ct:   { category: "Category:Computed_tomography_images", urls: [], images: [], ready: false },
+    mri:  { category: "Category:Magnetic_resonance_imaging_of_the_normal_brain", urls: [], images: [], ready: false }
+  };
+
+  function commonsApi(params) {
+    const base = "https://commons.wikimedia.org/w/api.php";
+    const q = new URLSearchParams({ ...params, format: "json", origin: "*" });
+    return `${base}?${q.toString()}`;
+  }
+
+  async function fetchCategoryFileTitles(category, limit = 80) {
+    const url = commonsApi({
+      action: "query",
+      list: "categorymembers",
+      cmtitle: category,
+      cmtype: "file",
+      cmlimit: String(limit)
+    });
+    const r = await fetch(url);
+    const j = await r.json();
+    const members = (j?.query?.categorymembers || []);
+    return members.map(m => m.title).filter(t => /^File:/i.test(t));
+  }
+
+  async function fetchFileImageUrls(fileTitles) {
+    if (!fileTitles.length) return [];
+    const url = commonsApi({
+      action: "query",
+      prop: "imageinfo",
+      iiprop: "url",
+      titles: fileTitles.join("|")
+    });
+    const r = await fetch(url);
+    const j = await r.json();
+    const pages = j?.query?.pages || {};
+    const urls = [];
+    for (const k of Object.keys(pages)) {
+      const info = pages[k]?.imageinfo?.[0];
+      if (info?.url) urls.push(info.url);
+    }
+    return urls;
+  }
+
+  function preloadImages(urls, want = 20) {
+    return new Promise((resolve) => {
+      const images = [];
+      let idx = 0;
+
+      function loadNext() {
+        if (images.length >= want || idx >= urls.length) return resolve(images);
+        const u = urls[idx++];
+
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => { images.push(img); loadNext(); };
+        img.onerror = () => { loadNext(); };
+        img.src = u;
+      }
+
+      const parallel = 6;
+      for (let i = 0; i < parallel; i++) loadNext();
+    });
+  }
+
+  async function ensurePackReady(packKey, want = 20) {
+    const pack = PACKS[packKey];
+    if (!pack || pack.ready) return;
+
+    try {
+      const titles = await fetchCategoryFileTitles(pack.category, 80);
+      const urls = await fetchFileImageUrls(titles);
+
+      pack.urls = urls;
+      pack.images = await preloadImages(urls, want);
+      pack.ready = pack.images.length >= 1;
+    } catch (e) {
+      pack.ready = false;
+    }
+  }
+
+  function ensureAllPacksReady() {
+    ensurePackReady("xray", 20);
+    ensurePackReady("us", 20);
+    ensurePackReady("ct", 20);
+    ensurePackReady("mri", 20);
+  }
+
+  function pickFromPack(packKey) {
+    const p = PACKS[packKey];
+    if (!p?.images?.length) return null;
+    return p.images[(Math.random() * p.images.length) | 0];
+  }
+
+  // Entities
+  const hazards = [];
+  const pickups = [];
+  const popups  = [];
+
   function resetGame() {
-    world.time = 0;
     world.level = 1;
     world.lives = 3;
     world.score = 0;
@@ -221,12 +395,14 @@
     player.vy = 0;
 
     hazards.length = 0;
-    orbs.length = 0;
+    pickups.length = 0;
+    popups.length  = 0;
 
-    // Spawn a few starters
+    // starters
     for (let i = 0; i < 4; i++) spawnHazard();
-    for (let i = 0; i < 3; i++) spawnOrb();
+    for (let i = 0; i < 6; i++) spawnPickup();
 
+    showStartBanner();
     syncUI();
     statusPill.innerHTML = "Go!";
   }
@@ -238,34 +414,51 @@
     levelEl.textContent = String(world.level);
   }
 
-  // Entities
-  const hazards = []; // red blocks
-  const orbs = [];    // green circles
-
-  function rand(min, max) { return min + Math.random() * (max - min); }
-
   function spawnHazard() {
-    // Spawn at top with downward velocity and slight horizontal drift.
     const size = rand(18, 42);
-    const x = rand(size, world.w - size);
+    const x = rand(0, world.w - size);
     const y = -size - rand(0, 200);
-    const base = 140 + world.level * 16;
+    const base = 140 + world.level * 14;
     hazards.push({
       x, y, w: size, h: size,
-      vx: rand(-60, 60),
-      vy: rand(base, base + 140) * world.speedMult
+      vx: rand(-65, 65),
+      vy: rand(base, base + 150) * world.speedMult
     });
   }
 
-  function spawnOrb() {
-    const r = rand(10, 16);
+  // Equal probability for each token type (25% each)
+  const TOKEN_TYPES = ["xray_token", "us_triangle", "ct_square", "mri_pentagon"];
+  function pickTypeEqual() {
+    return TOKEN_TYPES[(Math.random() * TOKEN_TYPES.length) | 0];
+  }
+
+  function spawnPickup() {
+    const type = pickTypeEqual();
+
+    const spec = (() => {
+      switch (type) {
+        case "xray_token":   return { score: 10, size: rand(12, 18), imgKey: "xray" };
+        case "us_triangle":  return { score: 20, size: rand(14, 20), imgKey: "us" };
+        case "ct_square":    return { score: 30, size: rand(14, 20), imgKey: "ct" };
+        case "mri_pentagon": return { score: 40, size: rand(15, 22), imgKey: "mri" };
+        default:             return { score: 10, size: rand(12, 18), imgKey: "xray" };
+      }
+    })();
+
+    const r = spec.size;
     const x = rand(r, world.w - r);
-    const y = -r - rand(0, 260);
-    const base = 110 + world.level * 10;
-    orbs.push({
-      x, y, r,
-      vx: rand(-30, 30),
-      vy: rand(base, base + 120) * world.speedMult
+    const y = -r - rand(0, 280);
+    const base = 115 + world.level * 10;
+
+    pickups.push({
+      type,
+      score: spec.score,
+      x, y,
+      size: spec.size,
+      vx: rand(-35, 35),
+      vy: rand(base, base + 125) * world.speedMult,
+      imgKey: spec.imgKey,
+      img: pickFromPack(spec.imgKey)
     });
   }
 
@@ -273,34 +466,27 @@
   const keys = new Set();
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
-    if (["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d","p"," "].includes(k)) {
-      e.preventDefault();
-    }
+    if (["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d","p"," "].includes(k)) e.preventDefault();
     if (k === "p") togglePause();
     keys.add(k);
   });
   window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 
-  // Touch joystick (mobile)
+  // Touch joystick
   const joyArea = document.getElementById("joyArea");
   const joyKnob = document.getElementById("joyKnob");
   let joyActive = false;
   let joyVec = {x:0,y:0};
 
   function setKnob(nx, ny){
-    // nx, ny in [-1,1]
-    const radius = 52;
-    joyKnob.style.left = `${50 + nx * (radius/80)*50}%`;
-    joyKnob.style.top  = `${50 + ny * (radius/80)*50}%`;
+    const maxMove = 40;
+    joyKnob.style.left = `calc(50% + ${nx * maxMove}px)`;
+    joyKnob.style.top  = `calc(50% + ${ny * maxMove}px)`;
   }
   function resetKnob(){ joyKnob.style.left="50%"; joyKnob.style.top="50%"; }
 
   if (joyArea) {
-    const onDown = (e) => {
-      joyActive = true;
-      joyArea.setPointerCapture(e.pointerId);
-      onMove(e);
-    };
+    const onDown = (e) => { joyActive = true; joyArea.setPointerCapture(e.pointerId); onMove(e); };
     const onMove = (e) => {
       if (!joyActive) return;
       const rect = joyArea.getBoundingClientRect();
@@ -314,12 +500,7 @@
       joyVec = {x:nx, y:ny};
       setKnob(nx, ny);
     };
-    const onUp = () => {
-      joyActive = false;
-      joyVec = {x:0,y:0};
-      resetKnob();
-    };
-
+    const onUp = () => { joyActive = false; joyVec = {x:0,y:0}; resetKnob(); };
     joyArea.addEventListener("pointerdown", onDown);
     joyArea.addEventListener("pointermove", onMove);
     joyArea.addEventListener("pointerup", onUp);
@@ -334,10 +515,17 @@
     btnPause.textContent = paused ? "Resume" : "Pause";
   }
 
-  btnStart.addEventListener("click", () => {
+  btnStart.addEventListener("click", async () => {
     running = true;
     paused = false;
     btnPause.textContent = "Pause";
+
+    ensureAudio();
+    if (audioCtx && audioCtx.state === "suspended") {
+      try { await audioCtx.resume(); } catch {}
+    }
+
+    ensureAllPacksReady();
     resetGame();
     lastTs = performance.now();
     requestAnimationFrame(loop);
@@ -358,7 +546,6 @@
   }
 
   function circleRectCollide(cx, cy, r, rx, ry, rw, rh){
-    // closest point on rect to circle center
     const px = Math.max(rx, Math.min(cx, rx + rw));
     const py = Math.max(ry, Math.min(cy, ry + rh));
     const dx = cx - px;
@@ -372,97 +559,116 @@
     return dx*dx + dy*dy <= rr*rr;
   }
 
-  function update(dt){
-    world.time += dt;
-
-    // Level up every 15 seconds
-    const newLevel = 1 + Math.floor(world.time / 15);
-    if (newLevel !== world.level) {
-      world.level = newLevel;
-      world.speedMult = 1 + (world.level - 1) * 0.08;
-      // Increase spawn pressure a bit
-      spawnHazard();
-      if (world.level % 2 === 0) spawnOrb();
+  // Drawing helpers for image-clipped shapes
+  function pathCircle(x, y, r) { ctx.arc(x, y, r, 0, Math.PI * 2); }
+  function pathTriangle(x, y, r) {
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x - r * 0.9, y + r * 0.85);
+    ctx.lineTo(x + r * 0.9, y + r * 0.85);
+    ctx.closePath();
+  }
+  function pathSquare(x, y, r) {
+    const s = r * 1.6;
+    ctx.rect(x - s/2, y - s/2, s, s);
+  }
+  function pathPentagon(x, y, r) {
+    for (let i = 0; i < 5; i++) {
+      const a = (-Math.PI / 2) + i * (Math.PI * 2 / 5);
+      const px = x + Math.cos(a) * r;
+      const py = y + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
+    ctx.closePath();
+  }
 
-    // Movement input
+  function drawImageClippedToPath(img, pathFn, x, y, size) {
+    if (!img || !img.complete || img.naturalWidth === 0) return false;
+
+    ctx.save();
+    ctx.beginPath();
+    pathFn(x, y, size);
+    ctx.clip();
+
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const target = size * 2.2;
+    const scale = Math.max(target / iw, target / ih);
+    const dw = iw * scale, dh = ih * scale;
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(img, x - dw/2, y - dh/2, dw, dh);
+
+    ctx.restore();
+    return true;
+  }
+
+  function update(dt){
+    // movement input
     let ax = 0, ay = 0;
-
     if (keys.has("arrowleft") || keys.has("a")) ax -= 1;
     if (keys.has("arrowright") || keys.has("d")) ax += 1;
     if (keys.has("arrowup") || keys.has("w")) ay -= 1;
     if (keys.has("arrowdown") || keys.has("s")) ay += 1;
 
-    // Touch joystick adds continuous input
     ax += joyVec.x;
     ay += joyVec.y;
 
-    // Normalize
     const len = Math.hypot(ax, ay);
     if (len > 1e-6) { ax /= len; ay /= len; }
 
-    // Apply accel + friction
     player.vx += ax * player.accel * dt;
     player.vy += ay * player.accel * dt;
 
     player.vx *= Math.pow(player.friction, dt * 60);
     player.vy *= Math.pow(player.friction, dt * 60);
 
-    // Clamp speed
     const sp = Math.hypot(player.vx, player.vy);
-    const max = player.maxSpeed;
-    if (sp > max) {
-      const s = max / sp;
-      player.vx *= s;
-      player.vy *= s;
+    if (sp > player.maxSpeed) {
+      const s = player.maxSpeed / sp;
+      player.vx *= s; player.vy *= s;
     }
 
     player.x += player.vx * dt;
     player.y += player.vy * dt;
 
-    // Keep in bounds
     player.x = Math.max(player.r, Math.min(world.w - player.r, player.x));
     player.y = Math.max(player.r, Math.min(world.h - player.r, player.y));
 
-    // Update hazards
+    // hazards update
     for (const h of hazards) {
       h.x += h.vx * dt;
       h.y += h.vy * dt;
-
-      // bounce off side walls a bit
       if (h.x < 0) { h.x = 0; h.vx *= -1; }
       if (h.x + h.w > world.w) { h.x = world.w - h.w; h.vx *= -1; }
     }
 
-    // Update orbs
-    for (const o of orbs) {
-      o.x += o.vx * dt;
-      o.y += o.vy * dt;
-      if (o.x < o.r) { o.x = o.r; o.vx *= -1; }
-      if (o.x > world.w - o.r) { o.x = world.w - o.r; o.vx *= -1; }
+    // pickups update
+    for (const p of pickups) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      const r = p.size;
+      if (p.x < r) { p.x = r; p.vx *= -1; }
+      if (p.x > world.w - r) { p.x = world.w - r; p.vx *= -1; }
     }
 
-    // Recycle off-screen and maintain counts based on level
-    const desiredHaz = 4 + Math.min(10, Math.floor(world.level * 0.9));
-    const desiredOrb = 3 + Math.min(6, Math.floor(world.level * 0.4));
+    // Maintain counts (fewer reds)
+    const desiredHaz = 3 + Math.min(8, Math.floor(world.level * 0.55));
+    const desiredPickups = 7 + Math.min(10, Math.floor(world.level * 0.65));
 
     for (let i = hazards.length - 1; i >= 0; i--) {
-      if (hazards[i].y > world.h + 120) hazards.splice(i, 1);
+      if (hazards[i].y > world.h + 140) hazards.splice(i, 1);
     }
     while (hazards.length < desiredHaz) spawnHazard();
 
-    for (let i = orbs.length - 1; i >= 0; i--) {
-      if (orbs[i].y > world.h + 120) orbs.splice(i, 1);
+    for (let i = pickups.length - 1; i >= 0; i--) {
+      if (pickups[i].y > world.h + 140) pickups.splice(i, 1);
     }
-    while (orbs.length < desiredOrb) spawnOrb();
+    while (pickups.length < desiredPickups) spawnPickup();
 
-    // Collisions: player vs hazards
+    // Collisions: hazards
     for (let i = hazards.length - 1; i >= 0; i--) {
       const h = hazards[i];
       if (circleRectCollide(player.x, player.y, player.r, h.x, h.y, h.w, h.h)) {
         hazards.splice(i, 1);
         world.lives -= 1;
-        // small knockback
         player.vx *= -0.35;
         player.vy *= -0.35;
         if (world.lives <= 0) {
@@ -474,24 +680,63 @@
       }
     }
 
-    // Collisions: player vs orbs
-    for (let i = orbs.length - 1; i >= 0; i--) {
-      const o = orbs[i];
-      if (circleCircleCollide(player.x, player.y, player.r, o.x, o.y, o.r)) {
-        orbs.splice(i, 1);
-        world.score += 10;
-        // occasional bonus
-        if (Math.random() < 0.08) world.score += 20;
+    // Collisions: pickups
+    for (let i = pickups.length - 1; i >= 0; i--) {
+      const pck = pickups[i];
+      if (circleCircleCollide(player.x, player.y, player.r, pck.x, pck.y, pck.size)) {
+        pickups.splice(i, 1);
+        world.score += pck.score;
+
+        popups.push({
+          x: pck.x, y: pck.y,
+          vy: -55, life: 0.9, t: 0,
+          text: `+${pck.score}`,
+          color: "rgba(255,255,255,.92)"
+        });
+
         syncUI();
       }
+    }
+
+    // Score-based level check
+    const newLevel = levelFromScore(world.score);
+    if (newLevel !== world.level) {
+      world.level = newLevel;
+      world.speedMult = 1 + (world.level - 1) * 0.08;
+
+      showLevelBanner(world.level);
+      ding();
+
+      spawnHazard();
+      spawnPickup();
+      if (world.level % 2 === 0) spawnPickup();
+
+      syncUI();
+    }
+
+    // Update popups
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const p = popups[i];
+      p.t += dt;
+      p.y += p.vy * dt;
+      if (p.t >= p.life) popups.splice(i, 1);
+    }
+
+    // Update banners
+    if (levelBanner.active) {
+      levelBanner.t += dt;
+      if (levelBanner.t >= levelBanner.dur) levelBanner.active = false;
+    }
+    if (startBanner.active) {
+      startBanner.t += dt;
+      if (startBanner.t >= startBanner.dur) startBanner.active = false;
     }
   }
 
   function draw(){
-    // clear
     ctx.clearRect(0, 0, world.w, world.h);
 
-    // subtle grid
+    // grid
     ctx.save();
     ctx.globalAlpha = 0.18;
     ctx.strokeStyle = "white";
@@ -504,49 +749,137 @@
     }
     ctx.restore();
 
-    // orbs (green)
-    for (const o of orbs) {
-      ctx.beginPath();
-      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(96,211,148,.85)";
-      ctx.fill();
+    // pickups
+    for (const p of pickups) {
+      if (!p.img) p.img = pickFromPack(p.imgKey);
 
-      ctx.beginPath();
-      ctx.arc(o.x - o.r*0.25, o.y - o.r*0.25, o.r*0.35, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,255,.22)";
-      ctx.fill();
+      if (p.type === "xray_token") {
+        const ok = drawImageClippedToPath(p.img, pathCircle, p.x, p.y, p.size);
+        if (!ok) {
+          ctx.beginPath(); pathCircle(p.x, p.y, p.size);
+          ctx.fillStyle = "rgba(96,211,148,.85)"; ctx.fill();
+        }
+        ctx.beginPath(); pathCircle(p.x, p.y, p.size);
+        ctx.strokeStyle = "rgba(96,211,148,.75)"; ctx.lineWidth = 2; ctx.stroke();
+      } else if (p.type === "us_triangle") {
+        const ok = drawImageClippedToPath(p.img, pathTriangle, p.x, p.y, p.size);
+        if (!ok) {
+          ctx.fillStyle = "rgba(255,209,102,.92)";
+          ctx.beginPath(); pathTriangle(p.x, p.y, p.size); ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 2;
+        ctx.beginPath(); pathTriangle(p.x, p.y, p.size); ctx.stroke();
+      } else if (p.type === "ct_square") {
+        const ok = drawImageClippedToPath(p.img, pathSquare, p.x, p.y, p.size);
+        if (!ok) {
+          ctx.fillStyle = "rgba(96,211,148,.95)";
+          ctx.beginPath(); pathSquare(p.x, p.y, p.size); ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 2;
+        ctx.beginPath(); pathSquare(p.x, p.y, p.size); ctx.stroke();
+      } else if (p.type === "mri_pentagon") {
+        const ok = drawImageClippedToPath(p.img, pathPentagon, p.x, p.y, p.size);
+        if (!ok) {
+          ctx.fillStyle = "rgba(255,159,64,.92)";
+          ctx.beginPath(); pathPentagon(p.x, p.y, p.size); ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 2;
+        ctx.beginPath(); pathPentagon(p.x, p.y, p.size); ctx.stroke();
+      }
     }
 
-    // hazards (red)
+    // hazards
     for (const h of hazards) {
       ctx.fillStyle = "rgba(255,107,107,.85)";
       ctx.fillRect(h.x, h.y, h.w, h.h);
-
       ctx.strokeStyle = "rgba(255,255,255,.16)";
       ctx.strokeRect(h.x + 1, h.y + 1, h.w - 2, h.h - 2);
     }
 
-    // player (blue)
+    // player
     ctx.beginPath();
     ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(122,162,255,.92)";
     ctx.fill();
-
-    // player highlight
     ctx.beginPath();
     ctx.arc(player.x - player.r*0.3, player.y - player.r*0.3, player.r*0.35, 0, Math.PI*2);
     ctx.fillStyle = "rgba(255,255,255,.20)";
     ctx.fill();
 
-    // top HUD inside canvas
+    // popups
+    ctx.save();
+    ctx.font = "18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const p of popups) {
+      const a = Math.max(0, 1 - (p.t / p.life));
+      ctx.globalAlpha = 0.95 * a;
+      ctx.fillStyle = p.color;
+      ctx.strokeStyle = "rgba(0,0,0,.45)";
+      ctx.lineWidth = 4;
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.restore();
+
+    // HUD + progress
     ctx.save();
     ctx.globalAlpha = 0.9;
     ctx.fillStyle = "rgba(0,0,0,.35)";
-    ctx.fillRect(10, 10, 240, 32);
+    ctx.fillRect(10, 10, 560, 32);
     ctx.fillStyle = "rgba(255,255,255,.85)";
     ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-    ctx.fillText(`Score ${world.score}   Lives ${world.lives}   Lvl ${world.level}`, 18, 31);
+
+    const nextLevelAt = (world.level) * POINTS_PER_LEVEL;
+    const toNext = (world.level >= MAX_LEVEL) ? 0 : Math.max(0, nextLevelAt - world.score);
+
+    ctx.fillText(`Score ${world.score}  Lives ${world.lives}  Lvl ${world.level}  Next in ${toNext}`, 18, 31);
     ctx.restore();
+
+    // Welcome banner (start)
+    if (startBanner.active) {
+      const p = startBanner.t / startBanner.dur;
+      const flash = Math.max(0, 1 - p);
+      const alpha = 0.12 + 0.6 * flash;
+      const textAlpha = 0.35 + 0.65 * flash;
+
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+      ctx.fillRect(0, 0, world.w, world.h);
+
+      ctx.globalAlpha = textAlpha;
+      ctx.fillStyle = "rgba(255,255,255,.95)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "26px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Welcome Medical student to our busy hospital", world.w/2, world.h/2);
+      ctx.restore();
+    }
+
+    // Level-up banner
+    if (levelBanner.active) {
+      const p = levelBanner.t / levelBanner.dur;
+      const flash = Math.max(0, 1 - p);
+      const alpha = 0.15 + 0.75 * flash;
+      const textAlpha = 0.35 + 0.65 * flash;
+
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+      ctx.fillRect(0, 0, world.w, world.h);
+
+      ctx.globalAlpha = textAlpha;
+      ctx.fillStyle = "rgba(255,255,255,.95)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "24px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Congratulations your contract has been renewed for another year", world.w/2, world.h/2 - 18);
+
+      const title = levelBanner.title ? ` — ${levelBanner.title}` : "";
+      ctx.font = "20px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+      ctx.fillStyle = "rgba(122,162,255,.95)";
+      ctx.fillText(`Level ${levelBanner.level}${title}`, world.w/2, world.h/2 + 20);
+      ctx.restore();
+    }
 
     // paused overlay
     if (paused) {
@@ -567,9 +900,6 @@
       ctx.fillStyle = "rgba(255,255,255,.92)";
       ctx.font = "28px system-ui, -apple-system, Segoe UI, Roboto";
       ctx.fillText("Press Start", world.w/2 - 72, world.h/2);
-      ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto";
-      ctx.fillStyle = "rgba(255,255,255,.70)";
-      ctx.fillText("Collect green • avoid red", world.w/2 - 86, world.h/2 + 26);
       ctx.restore();
     }
   }
@@ -578,15 +908,13 @@
     if (!running) return;
     const dt = Math.min(0.033, (ts - lastTs) / 1000);
     lastTs = ts;
-
     if (!paused) update(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
-  // Start screen
+  // init
   statusPill.innerHTML = "Press <b>Start</b>";
-
 })();
 </script>
 </body>
