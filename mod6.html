@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dodge & Collect — Floating Tokens</title>
+  <style>
+    :root{
+      --bg:#070b14; --fg:#e8eefc; --muted:#9bb0d9; --line:rgba(255,255,255,.12);
+      --card:rgba(18,26,43,.9);
+      --shadow:0 16px 50px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      background: radial-gradient(1000px 600px at 20% 0%, rgba(122,162,255,.18), transparent 60%),
+                  radial-gradient(1000px 600px at 80% 20%, rgba(96,211,148,.10), transparent 60%),
+                  var(--bg);
+      color:var(--fg);
+      display:flex; min-height:100vh; align-items:center; justify-content:center;
+      padding:18px;
+    }
+    .wrap{max-width:980px; width:100%; display:grid; grid-template-columns: 1fr 320px; gap:14px;}
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .hd{padding:12px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:12px; align-items:center;}
+    .title{font-weight:700; letter-spacing:.2px}
+    .sub{color:var(--muted); font-size:12px}
+    .bd{padding:12px 14px}
+    canvas{width:100%; height:auto; display:block; background:rgba(0,0,0,.25); border-radius:14px; border:1px solid rgba(255,255,255,.10)}
+    .stats{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
+    .stat{
+      padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+    }
+    .k{color:var(--muted); font-size:12px}
+    .v{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:18px; margin-top:4px}
+    .btns{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    button{
+      cursor:pointer;
+      border-radius:12px; border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color:var(--fg);
+      padding:10px 12px;
+      font:inherit;
+    }
+    button:hover{background: rgba(255,255,255,.10)}
+    .primary{border-color: rgba(122,162,255,.45); background: rgba(122,162,255,.14)}
+    .primary:hover{background: rgba(122,162,255,.20)}
+
+    .help{color:var(--muted); font-size:12px; line-height:1.35}
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      font-size:12px; color:var(--muted)
+    }
+    .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    .sep{height:1px; background:rgba(255,255,255,.10); margin:12px 0}
+
+    .joyWrap{
+      display:none;
+      margin-top:12px;
+      padding:12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+    }
+    .joyArea{
+      position:relative;
+      width:150px; height:150px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18);
+      touch-action:none;
+      margin:0 auto;
+    }
+    .joyKnob{
+      position:absolute;
+      left:50%; top:50%;
+      width:52px; height:52px;
+      transform:translate(-50%,-50%);
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(122,162,255,.18);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    @media (max-width: 920px){
+      .wrap{grid-template-columns:1fr}
+      .joyWrap{display:block}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="hd">
+        <div>
+          <div class="title">Dodge & Collect</div>
+          <div class="sub">Float around, report imaging tokens, avoid black jelly beans.</div>
+        </div>
+        <span class="pill" id="statusPill">Press <b>Start</b></span>
+      </div>
+      <div class="bd">
+        <canvas id="game" width="800" height="520"></canvas>
+
+        <div class="stats">
+          <div class="stat"><div class="k">Score</div><div class="v" id="score">0</div></div>
+          <div class="stat"><div class="k">Best</div><div class="v" id="best">0</div></div>
+          <div class="stat"><div class="k">Lives</div><div class="v" id="lives">3</div></div>
+          <div class="stat"><div class="k">Breaches</div><div class="v" id="breaches">0 / 5</div></div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="btnStart">Start / Restart</button>
+          <button id="btnPause">Pause</button>
+        </div>
+
+        <div class="joyWrap">
+          <div class="help" style="margin:0 0 10px;">Touch joystick</div>
+          <div class="joyArea" id="joyArea">
+            <div class="joyKnob" id="joyKnob"></div>
+          </div>
+          <div class="help" style="margin-top:10px;">Tip: thumb here, eyes on the play area.</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <div class="hd">
+        <div>
+          <div class="title">Controls</div>
+          <div class="sub">Keyboard or touch</div>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="help">
+          <div class="row">
+            <span class="pill">Move: <b>WASD</b> or <b>Arrow keys</b></span>
+            <span class="pill">Pause: <b>P</b></span>
+          </div>
+          <div class="sep"></div>
+          <div>
+            You are the blue circle.<br/>
+            <b>X-ray</b> = +5<br/>
+            <b>Ultrasound</b> = +10 (unlocks Level 2)<br/>
+            <b>CT (MUST REPORT)</b> = +20 (unlocks Level 3, flashes red with 10s left)<br/>
+            <b>MRI (MUST REPORT)</b> = +30 (unlocks Level 5, flashes red with 10s left)<br/>
+            <b>Black jelly beans</b>, your boss taught you wrong = lose a life<br/>
+            If CT/MRI expires: <b>YOU HAVE BREACHED</b>. 5 breaches = fired.
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const scoreEl = document.getElementById("score");
+  const bestEl  = document.getElementById("best");
+  const livesEl = document.getElementById("lives");
+  const breachesEl = document.getElementById("breaches");
+  const statusPill = document.getElementById("statusPill");
+
+  const btnStart = document.getElementById("btnStart");
+  const btnPause = document.getElementById("btnPause");
+
+  // High score
+  const BEST_KEY = "dodge_collect_best_v3";
+  let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  bestEl.textContent = String(best);
+
+  // Audio
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  function ding() {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(880, t0);
+    o.frequency.exponentialRampToValueAtTime(1320, t0 + 0.08);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 0.24);
+  }
+  function buzzBreach() {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(140, t0);
+    o.frequency.linearRampToValueAtTime(90, t0 + 0.25);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 0.30);
+  }
+
+  // World / player
+  const world = {
+    w: canvas.width,
+    h: canvas.height,
+    score: 0,
+    lives: 3,
+    breaches: 0,
+    maxBreaches: 5,
+
+    // level system
+    level: 0,
+    nextLevelAt: 100
+  };
+
+  // Level progression (steep arcade curve)
+  const LEVEL_START_POINTS = 100; // points to reach Level 1
+  const LEVEL_BASE_INC = 80;
+  const LEVEL_RAMP = 30;
+
+  // --- Modality unlocks by level ---
+  // Start: only XRAY
+  // Level 2: unlock US
+  // Level 3: unlock CT
+  // Level 5: unlock MRI
+  const UNLOCKS = { us: 2, ct: 3, mri: 5 };
+  const unlocked = { xray: true, us: false, ct: false, mri: false };
+
+  function allowedKinds() {
+    const kinds = ["xray"];
+    if (unlocked.us)  kinds.push("us");
+    if (unlocked.ct)  kinds.push("ct");
+    if (unlocked.mri) kinds.push("mri");
+    return kinds;
+  }
+
+  function resetLeveling() {
+    world.level = 0;
+    world.nextLevelAt = LEVEL_START_POINTS;
+  }
+
+  function pointsNeededForNextLevel(levelAfterUp) {
+    return LEVEL_BASE_INC + LEVEL_RAMP * levelAfterUp;
+  }
+
+  function showLevelUpMessage(message) {
+    overlays.levelup.active = true;
+    overlays.levelup.t = 0;
+    overlays.levelup.level = world.level;
+    overlays.levelup.message = message || null;
+  }
+
+  function maybeUnlockForLevel(levelJustReached) {
+    if (!unlocked.us && levelJustReached >= UNLOCKS.us) {
+      unlocked.us = true;
+      showLevelUpMessage("Congratulations you may report Ultrasound");
+      ding();
+      return;
+    }
+    if (!unlocked.ct && levelJustReached >= UNLOCKS.ct) {
+      unlocked.ct = true;
+      showLevelUpMessage("Congratulations you may report CT");
+      ding();
+      return;
+    }
+    if (!unlocked.mri && levelJustReached >= UNLOCKS.mri) {
+      unlocked.mri = true;
+      showLevelUpMessage("Congratulations you may report MRI");
+      ding();
+      return;
+    }
+
+    showLevelUpMessage("Congratulations your contract has been renewed for another year");
+    ding();
+  }
+
+  function checkLevelUp() {
+    while (world.score >= world.nextLevelAt) {
+      world.level += 1;
+      maybeUnlockForLevel(world.level);
+      world.nextLevelAt += pointsNeededForNextLevel(world.level);
+    }
+  }
+
+  const player = {
+    x: world.w * 0.5,
+    y: world.h * 0.7,
+    r: 14,
+    vx: 0,
+    vy: 0,
+    maxSpeed: 420,
+    accel: 1800,
+    friction: 0.86
+  };
+
+  // Game state
+  let running = false;
+  let paused  = false;
+  let lastTs  = 0;
+
+  // Timings
+  const TOKEN_TTL = 30.0;
+  const MUST_FLASH_AT = 10.0;
+  const INTRO_DUR = 5.0;
+
+  // Entities
+  const hazards = [];
+  const tokens  = [];
+  const popups  = [];
+  const overlays = {
+    intro:  { active:false, t:0, dur:INTRO_DUR },
+    breach: { active:false, t:0, dur:1.6 },
+    fired:  { active:false, t:0, dur:999 },
+    levelup:{ active:false, t:0, dur:2.2, level:0, message:null }
+  };
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+
+  function syncUI(){
+    scoreEl.textContent = String(world.score);
+    bestEl.textContent = String(best);
+    livesEl.textContent = String(world.lives);
+    breachesEl.textContent = `${world.breaches} / ${world.maxBreaches}`;
+  }
+
+  function showIntro(){
+    overlays.intro.active = true;
+    overlays.intro.t = 0;
+    overlays.intro.dur = INTRO_DUR;
+  }
+  function showBreach(){
+    overlays.breach.active = true;
+    overlays.breach.t = 0;
+    overlays.breach.dur = 1.6;
+  }
+  function showFired(){
+    overlays.fired.active = true;
+    overlays.fired.t = 0;
+  }
+
+  // Wikimedia image packs (5 each). If CORS fails, we fall back to placeholders.
+  const PACKS = {
+    xray: { category: "Category:X-rays_of_the_chest", images: [] },
+    us:   { category: "Category:Medical_ultrasound", images: [] },
+    ct:   { category: "Category:Computed_tomography_images", images: [] },
+    mri:  { category: "Category:Magnetic_resonance_imaging_of_the_normal_brain", images: [] }
+  };
+
+  function commonsApi(params) {
+    const base = "https://commons.wikimedia.org/w/api.php";
+    const q = new URLSearchParams({ ...params, format: "json", origin: "*" });
+    return `${base}?${q.toString()}`;
+  }
+
+  async function fetchCategoryFileTitles(category, limit = 25) {
+    const url = commonsApi({
+      action: "query",
+      list: "categorymembers",
+      cmtitle: category,
+      cmtype: "file",
+      cmlimit: String(limit)
+    });
+    const r = await fetch(url);
+    const j = await r.json();
+    return (j?.query?.categorymembers || [])
+      .map(m => m.title)
+      .filter(t => /^File:/i.test(t));
+  }
+
+  async function fetchFileImageUrls(fileTitles) {
+    const CHUNK = 20;
+    const all = [];
+    for (let i = 0; i < fileTitles.length; i += CHUNK) {
+      const slice = fileTitles.slice(i, i + CHUNK);
+      const url = commonsApi({
+        action: "query",
+        prop: "imageinfo",
+        iiprop: "url",
+        titles: slice.join("|")
+      });
+      const r = await fetch(url);
+      const j = await r.json();
+      const pages = j?.query?.pages || {};
+      for (const k of Object.keys(pages)) {
+        const info = pages[k]?.imageinfo?.[0];
+        if (info?.url) all.push(info.url);
+      }
+    }
+    return all;
+  }
+
+  function preloadImages(urls, want = 5) {
+    return new Promise((resolve) => {
+      const images = [];
+      let idx = 0;
+
+      function loadNext(){
+        if (images.length >= want || idx >= urls.length) return resolve(images);
+
+        const u = urls[idx++];
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        img.onload = () => { images.push(img); loadNext(); };
+        img.onerror = () => { loadNext(); };
+
+        img.src = u;
+      }
+
+      const parallel = 4;
+      for (let i = 0; i < parallel; i++) loadNext();
+    });
+  }
+
+  async function loadPack(key, want = 5){
+    const pack = PACKS[key];
+    try{
+      const titles = await fetchCategoryFileTitles(pack.category, 25);
+      const urls = await fetchFileImageUrls(titles);
+      pack.images = await preloadImages(urls, want);
+    }catch(e){
+      console.error("Pack load failed:", key, e);
+      pack.images = [];
+    }
+  }
+
+  function pickFromPack(key){
+    const arr = PACKS[key]?.images || [];
+    if (!arr.length) return null;
+    return arr[(Math.random() * arr.length) | 0];
+  }
+
+  // --- Grayscale cache for ultrasound images ---
+  const _grayCache = new WeakMap();
+  function grayscaleCanvasFor(img) {
+    if (_grayCache.has(img)) return _grayCache.get(img);
+
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+
+    const im = g.getImageData(0, 0, w, h);
+    const d = im.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const y = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+      d[i] = d[i+1] = d[i+2] = y;
+    }
+    g.putImageData(im, 0, 0);
+
+    _grayCache.set(img, c);
+    return c;
+  }
+
+  // Controls
+  const keys = new Set();
+  window.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d","p"," "].includes(k)) e.preventDefault();
+    if (k === "p") togglePause();
+    keys.add(k);
+  });
+  window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+  // Touch joystick
+  const joyArea = document.getElementById("joyArea");
+  const joyKnob = document.getElementById("joyKnob");
+  let joyActive = false;
+  let joyVec = {x:0,y:0};
+
+  function setKnob(nx, ny){
+    const maxMove = 40;
+    joyKnob.style.left = `calc(50% + ${nx * maxMove}px)`;
+    joyKnob.style.top  = `calc(50% + ${ny * maxMove}px)`;
+  }
+  function resetKnob(){ joyKnob.style.left="50%"; joyKnob.style.top="50%"; }
+
+  function shapeStick(v){
+    const dead = 0.10;
+    const s = Math.max(0, Math.abs(v) - dead) / (1 - dead);
+    const curved = Math.pow(s, 0.55);
+    return Math.sign(v) * curved;
+  }
+
+  if (joyArea) {
+    joyArea.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+    const onDown = (e) => { joyActive = true; joyArea.setPointerCapture(e.pointerId); onMove(e); };
+    const onMove = (e) => {
+      if (!joyActive) return;
+      const rect = joyArea.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top + rect.height/2;
+      const dx = (e.clientX - cx);
+      const dy = (e.clientY - cy);
+      const max = rect.width * 0.33;
+      const nx = Math.max(-1, Math.min(1, dx / max));
+      const ny = Math.max(-1, Math.min(1, dy / max));
+      joyVec = {x:nx, y:ny};
+      setKnob(nx, ny);
+    };
+    const onUp = () => { joyActive = false; joyVec = {x:0,y:0}; resetKnob(); };
+
+    joyArea.addEventListener("pointerdown", onDown);
+    joyArea.addEventListener("pointermove", onMove);
+    joyArea.addEventListener("pointerup", onUp);
+    joyArea.addEventListener("pointercancel", onUp);
+    joyArea.addEventListener("pointerleave", onUp);
+  }
+
+  function togglePause(){
+    if (!running) return;
+    paused = !paused;
+    statusPill.innerHTML = paused ? "Paused" : "Go!";
+    btnPause.textContent = paused ? "Resume" : "Pause";
+  }
+
+  // Spawn helpers (FLOAT AROUND)
+  function spawnHazard(){
+    const w = rand(26, 56), h = rand(20, 44);
+    hazards.push({
+      x: rand(0, world.w - w),
+      y: rand(0, world.h - h),
+      w, h,
+      vx: rand(-30, 30),
+      vy: rand(-30, 30),
+      hitCd: 0
+    });
+  }
+
+  function spawnToken(kind){
+    const size =
+      kind === "xray" ? rand(24, 36) :
+      kind === "us"   ? rand(28, 40) :
+      kind === "ct"   ? rand(28, 40) :
+      rand(30, 44);
+
+    const score =
+      kind === "xray" ? 5 :
+      kind === "us"   ? 10 :
+      kind === "ct"   ? 20 : 30;
+
+    const mustReport = (kind === "ct" || kind === "mri");
+
+    tokens.push({
+      kind,
+      score,
+      mustReport,
+      x: rand(size, world.w - size),
+      y: rand(size, world.h - size),
+      vx: rand(-18, 18),
+      vy: rand(-18, 18),
+      size,
+      born: performance.now() / 1000,
+      ttl: 30.0,
+      img: pickFromPack(kind),
+      imgBad: false
+    });
+  }
+
+  // Geometry
+  function circleCircle(ax, ay, ar, bx, by, br){
+    const dx = ax - bx, dy = ay - by;
+    const rr = ar + br;
+    return dx*dx + dy*dy <= rr*rr;
+  }
+  function circleRect(cx, cy, r, rx, ry, rw, rh){
+    const px = Math.max(rx, Math.min(cx, rx + rw));
+    const py = Math.max(ry, Math.min(cy, ry + rh));
+    const dx = cx - px;
+    const dy = cy - py;
+    return (dx*dx + dy*dy) <= r*r;
+  }
+
+  // Shape paths for image clipping
+  function pathCircle(x, y, r){ ctx.arc(x, y, r, 0, Math.PI*2); }
+  function pathTriangle(x, y, r){
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x - r * 0.9, y + r * 0.85);
+    ctx.lineTo(x + r * 0.9, y + r * 0.85);
+    ctx.closePath();
+  }
+  function pathSquare(x, y, r){
+    const s = r * 1.6;
+    ctx.rect(x - s/2, y - s/2, s, s);
+  }
+  function pathPentagon(x, y, r){
+    for (let i=0;i<5;i++){
+      const a = (-Math.PI/2) + i * (Math.PI*2/5);
+      const px = x + Math.cos(a)*r;
+      const py = y + Math.sin(a)*r;
+      if (i===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  // Jelly bean drawing (hazards)
+  function drawJellyBean(x, y, w, h){
+    ctx.save();
+    const cx = x + w/2, cy = y + h/2;
+    const rx = w/2, ry = h/2;
+    ctx.translate(cx, cy);
+    ctx.rotate(0.35);
+
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.6, -ry);
+    ctx.bezierCurveTo(rx * 0.9, -ry, rx * 1.1, ry * 0.6, rx * 0.3, ry);
+    ctx.bezierCurveTo(-rx * 1.1, ry * 1.1, -rx * 1.1, -ry * 0.2, -rx * 0.6, -ry);
+    ctx.closePath();
+
+    ctx.fillStyle = "rgba(15,15,15,0.95)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(-rx * 0.2, -ry * 0.3, rx * 0.25, ry * 0.35, -0.3, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Game start/reset
+  function resetGame(){
+    world.score = 0;
+    world.lives = 3;
+    world.breaches = 0;
+
+    resetLeveling();
+
+    // reset modality unlocks
+    unlocked.xray = true;
+    unlocked.us = false;
+    unlocked.ct = false;
+    unlocked.mri = false;
+
+    tokens.length = 0;
+    hazards.length = 0;
+    popups.length = 0;
+
+    overlays.fired.active = false;
+    overlays.breach.active = false;
+    overlays.levelup.active = false;
+    overlays.levelup.message = null;
+
+    player.x = world.w * 0.5;
+    player.y = world.h * 0.7;
+    player.vx = 0;
+    player.vy = 0;
+
+    for (let i=0;i<6;i++) spawnHazard();
+
+    // seed tokens (XRAY only)
+    spawnToken("xray");
+    spawnToken("xray");
+    spawnToken("xray");
+    spawnToken("xray");
+    spawnToken("xray");
+    spawnToken("xray");
+
+    syncUI();
+    statusPill.innerHTML = "Go!";
+  }
+
+  function endGameFired(){
+    running = false;
+    paused = false;
+    btnPause.textContent = "Pause";
+    statusPill.innerHTML = `You're fired — press <b>Start</b>`;
+    showFired();
+
+    if (world.score > best) {
+      best = world.score;
+      localStorage.setItem(BEST_KEY, String(best));
+    }
+    syncUI();
+  }
+
+  // Token drawing: if Safari throws SecurityError due to CORS/tainted canvas, we mark bad and fallback.
+  function drawToken(t){
+    if (!t.img && !t.imgBad) t.img = pickFromPack(t.kind);
+
+    const now = performance.now()/1000;
+    const age = now - t.born;
+    const left = Math.max(0, t.ttl - age);
+
+    const isMust = t.mustReport;
+    const isFlashing = isMust && left <= 10.0;
+    const flashOn = isFlashing && (Math.floor(now / 0.15) % 2 === 0);
+
+    const ringFor = (kind) =>
+      kind === "xray" ? "rgba(96,211,148,.85)" :
+      kind === "us"   ? "rgba(255,209,102,.85)" :
+      kind === "ct"   ? "rgba(96,211,148,.85)" :
+                        "rgba(255,159,64,.85)";
+
+    const labelFor = (kind) =>
+      kind === "xray" ? "XRAY" :
+      kind === "us"   ? "US" :
+      kind === "ct"   ? "CT" : "MRI";
+
+    const drawFallback = () => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.size, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,.08)";
+      ctx.fill();
+      ctx.strokeStyle = flashOn ? "rgba(255,80,80,.95)" : ringFor(t.kind);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255,255,255,.88)";
+      ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(labelFor(t.kind), t.x, t.y);
+      ctx.restore();
+
+      if (isMust){
+        ctx.save();
+        ctx.fillStyle = flashOn ? "rgba(255,90,90,.95)" : "rgba(255,255,255,.78)";
+        ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(`${Math.ceil(left)}s`, t.x, t.y + t.size + 6);
+        ctx.restore();
+      }
+    };
+
+    if (t.imgBad || !t.img || !t.img.complete || t.img.naturalWidth === 0){
+      drawFallback();
+      return;
+    }
+
+    let pathFn = pathCircle;
+    if (t.kind === "us") pathFn = pathTriangle;
+    if (t.kind === "ct") pathFn = pathSquare;
+    if (t.kind === "mri") pathFn = pathPentagon;
+
+    try {
+      const srcImg = (t.kind === "us") ? grayscaleCanvasFor(t.img) : t.img;
+
+      ctx.save();
+      ctx.beginPath();
+      pathFn(t.x, t.y, t.size);
+      ctx.clip();
+
+      const iw = (srcImg.naturalWidth || srcImg.width || 1);
+      const ih = (srcImg.naturalHeight || srcImg.height || 1);
+      const target = t.size * 3.2;
+      const scale = Math.max(target/iw, target/ih);
+      const dw = iw*scale, dh = ih*scale;
+
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(srcImg, t.x - dw/2, t.y - dh/2, dw, dh);
+      ctx.restore();
+
+      ctx.save();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = flashOn ? "rgba(255,80,80,.95)" : "rgba(255,255,255,.22)";
+      ctx.beginPath();
+      pathFn(t.x, t.y, t.size);
+      ctx.stroke();
+      ctx.restore();
+
+      if (isMust){
+        ctx.save();
+        ctx.fillStyle = flashOn ? "rgba(255,90,90,.95)" : "rgba(255,255,255,.78)";
+        ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(`${Math.ceil(left)}s`, t.x, t.y + t.size + 6);
+        ctx.restore();
+      }
+    } catch (err) {
+      console.warn("Image draw failed (fallback to placeholder):", err);
+      t.imgBad = true;
+      t.img = null;
+      drawFallback();
+    }
+  }
+
+  // Update loop
+  function update(dt){
+    const now = performance.now()/1000;
+
+    // movement input
+    let ax=0, ay=0;
+    if (keys.has("arrowleft") || keys.has("a")) ax -= 1;
+    if (keys.has("arrowright") || keys.has("d")) ax += 1;
+    if (keys.has("arrowup") || keys.has("w")) ay -= 1;
+    if (keys.has("arrowdown") || keys.has("s")) ay += 1;
+
+    // joystick
+    const jx = shapeStick(joyVec.x), jy = shapeStick(joyVec.y);
+    const stickMag = Math.hypot(jx, jy);
+
+    if (stickMag > 0.001){
+      const targetVx = jx * player.maxSpeed;
+      const targetVy = jy * player.maxSpeed;
+      const snap = 24;
+      const k = 1 - Math.exp(-snap * dt);
+      player.vx += (targetVx - player.vx) * k;
+      player.vy += (targetVy - player.vy) * k;
+    } else {
+      const len = Math.hypot(ax, ay);
+      if (len > 1e-6){ ax/=len; ay/=len; }
+
+      player.vx += ax * player.accel * dt;
+      player.vy += ay * player.accel * dt;
+
+      player.vx *= Math.pow(player.friction, dt * 60);
+      player.vy *= Math.pow(player.friction, dt * 60);
+
+      const sp = Math.hypot(player.vx, player.vy);
+      if (sp > player.maxSpeed){
+        const s = player.maxSpeed/sp;
+        player.vx *= s; player.vy *= s;
+      }
+    }
+
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+
+    player.x = Math.max(player.r, Math.min(world.w - player.r, player.x));
+    player.y = Math.max(player.r, Math.min(world.h - player.r, player.y));
+
+    // hazards float + bounce
+    for (const h of hazards){
+      h.hitCd = Math.max(0, h.hitCd - dt);
+
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+
+      if (h.x < 0){ h.x = 0; h.vx *= -1; }
+      if (h.y < 0){ h.y = 0; h.vy *= -1; }
+      if (h.x + h.w > world.w){ h.x = world.w - h.w; h.vx *= -1; }
+      if (h.y + h.h > world.h){ h.y = world.h - h.h; h.vy *= -1; }
+
+      if (h.hitCd <= 0 && circleRect(player.x, player.y, player.r * 0.9, h.x + h.w*0.1, h.y + h.h*0.1, h.w*0.8, h.h*0.8)){
+        world.lives -= 1;
+        h.hitCd = 0.55;
+
+        player.vx *= -0.35;
+        player.vy *= -0.35;
+
+        h.vx *= -1;
+        h.vy *= -1;
+
+        syncUI();
+
+        if (world.lives <= 0){
+          endGameFired();
+          return;
+        }
+      }
+    }
+
+    // tokens float + bounce + TTL
+    for (let i=tokens.length-1;i>=0;i--){
+      const t = tokens[i];
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+
+      const r = t.size;
+
+      if (t.x < r){ t.x = r; t.vx *= -1; }
+      if (t.y < r){ t.y = r; t.vy *= -1; }
+      if (t.x > world.w - r){ t.x = world.w - r; t.vx *= -1; }
+      if (t.y > world.h - r){ t.y = world.h - r; t.vy *= -1; }
+
+      // collect
+      if (circleCircle(player.x, player.y, player.r, t.x, t.y, t.size)){
+        world.score += t.score;
+        popups.push({ x:t.x, y:t.y, vy:-55, life:0.9, tt:0, text:`+${t.score}` });
+
+        tokens.splice(i,1);
+
+        checkLevelUp();
+        syncUI();
+        ding();
+        continue;
+      }
+
+      // expire => breach if must-report
+      const age = now - t.born;
+      if (age >= t.ttl){
+        if (t.mustReport){
+          world.breaches += 1;
+          syncUI();
+          showBreach();
+          buzzBreach();
+          if (world.breaches >= world.maxBreaches){
+            endGameFired();
+            return;
+          }
+        }
+        tokens.splice(i,1);
+      }
+    }
+
+    // ensure tokens stay around (only spawn unlocked modalities)
+    const wantTotal = 10;
+    while (tokens.length < wantTotal) {
+      const kinds = allowedKinds();
+
+      // keep at least 1 CT/MRI only if unlocked
+      if (unlocked.ct) {
+        const ctCount = tokens.filter(x => x.kind === "ct").length;
+        if (ctCount < 1) { spawnToken("ct"); continue; }
+      }
+      if (unlocked.mri) {
+        const mriCount = tokens.filter(x => x.kind === "mri").length;
+        if (mriCount < 1) { spawnToken("mri"); continue; }
+      }
+
+      spawnToken(kinds[(Math.random() * kinds.length) | 0]);
+    }
+
+    // popups
+    for (let i=popups.length-1;i>=0;i--){
+      const p = popups[i];
+      p.tt += dt;
+      p.y += p.vy * dt;
+      if (p.tt >= p.life) popups.splice(i,1);
+    }
+
+    // overlays
+    if (overlays.levelup.active){
+      overlays.levelup.t += dt;
+      if (overlays.levelup.t >= overlays.levelup.dur) overlays.levelup.active = false;
+    }
+    if (overlays.breach.active){
+      overlays.breach.t += dt;
+      if (overlays.breach.t >= overlays.breach.dur) overlays.breach.active = false;
+    }
+    if (overlays.intro.active){
+      overlays.intro.t += dt;
+      if (overlays.intro.t >= overlays.intro.dur) overlays.intro.active = false;
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0, 0, world.w, world.h);
+
+    // subtle grid
+    ctx.save();
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 1;
+    for (let x=40; x<world.w; x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,world.h); ctx.stroke(); }
+    for (let y=40; y<world.h; y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(world.w,y); ctx.stroke(); }
+    ctx.restore();
+
+    // tokens
+    for (const t of tokens) drawToken(t);
+
+    // hazards
+    for (const h of hazards) drawJellyBean(h.x, h.y, h.w, h.h);
+
+    // player
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(122,162,255,.92)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(player.x - player.r*0.3, player.y - player.r*0.3, player.r*0.35, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,.20)";
+    ctx.fill();
+
+    // popups
+    ctx.save();
+    ctx.font = "18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const p of popups){
+      const a = Math.max(0, 1 - (p.tt / p.life));
+      ctx.globalAlpha = 0.95 * a;
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.strokeStyle = "rgba(0,0,0,.45)";
+      ctx.lineWidth = 4;
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.restore();
+
+    // HUD
+    const toNext = Math.max(0, world.nextLevelAt - world.score);
+
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    ctx.fillRect(10, 10, 760, 32);
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    ctx.fillText(
+      `Score ${world.score}   Lives ${world.lives}   Level ${world.level}   Next in ${toNext}   Breaches ${world.breaches}/${world.maxBreaches}`,
+      18, 31
+    );
+    ctx.restore();
+
+    // overlays
+    if (overlays.intro.active){
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(0,0,world.w,world.h);
+      ctx.fillStyle = "rgba(255,255,255,.95)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "26px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Welcome Medical Student to busy Emergency Reporting Room", world.w/2, world.h/2 - 14);
+      ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillStyle = "rgba(255,255,255,.72)";
+      ctx.fillText("Loading imaging tokens…", world.w/2, world.h/2 + 20);
+      ctx.restore();
+    }
+
+    if (overlays.levelup.active){
+      const p = overlays.levelup.t / overlays.levelup.dur;
+      const a = Math.max(0, 1 - p);
+
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${0.25 + 0.55*a})`;
+      ctx.fillRect(0,0,world.w,world.h);
+
+      const msg = overlays.levelup.message || "Congratulations your contract has been renewed for another year";
+      ctx.fillStyle = "rgba(255,255,255,.96)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "26px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText(msg, world.w/2, world.h/2 - 16);
+
+      ctx.fillStyle = "rgba(122,162,255,.98)";
+      ctx.font = "22px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+      ctx.fillText(`Level ${overlays.levelup.level}`, world.w/2, world.h/2 + 22);
+      ctx.restore();
+    }
+
+    if (overlays.breach.active){
+      const p = overlays.breach.t / overlays.breach.dur;
+      const a = Math.max(0, 1 - p);
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${0.25 + 0.55*a})`;
+      ctx.fillRect(0,0,world.w,world.h);
+      ctx.fillStyle = "rgba(255,90,90,.98)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "40px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("YOU HAVE BREACHED", world.w/2, world.h/2);
+      ctx.restore();
+    }
+
+    if (overlays.fired.active){
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.70)";
+      ctx.fillRect(0,0,world.w,world.h);
+      ctx.fillStyle = "rgba(255,90,90,.98)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "44px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("YOU'RE FIRED", world.w/2, world.h/2 - 10);
+      ctx.fillStyle = "rgba(255,255,255,.75)";
+      ctx.font = "16px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Press Start to try again", world.w/2, world.h/2 + 34);
+      ctx.restore();
+    }
+
+    if (paused){
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(0,0,world.w,world.h);
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "28px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Paused", world.w/2, world.h/2);
+      ctx.restore();
+    }
+
+    if (!running){
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(0,0,world.w,world.h);
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "28px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("Press Start", world.w/2, world.h/2);
+      ctx.restore();
+    }
+  }
+
+  function loop(ts){
+    if (!running) return;
+    const dt = Math.min(0.033, (ts - lastTs)/1000);
+    lastTs = ts;
+
+    if (!paused) update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // Start button: show intro for 5s while loading images
+  btnStart.addEventListener("click", async () => {
+    running = true;
+    paused = false;
+    btnPause.textContent = "Pause";
+
+    ensureAudio();
+    if (audioCtx && audioCtx.state === "suspended") {
+      try { await audioCtx.resume(); } catch {}
+    }
+
+    showIntro();
+    statusPill.innerHTML = "Loading images…";
+
+    const t0 = performance.now();
+    await Promise.all([
+      loadPack("xray", 5),
+      loadPack("us", 5),
+      loadPack("ct", 5),
+      loadPack("mri", 5),
+    ]);
+
+    const elapsed = (performance.now() - t0) / 1000;
+    const remaining = Math.max(0, INTRO_DUR - elapsed);
+    if (remaining > 0) await new Promise(r => setTimeout(r, remaining * 1000));
+
+    overlays.intro.active = false;
+
+    statusPill.innerHTML =
+      `Loaded: XR ${PACKS.xray.images.length} • US ${PACKS.us.images.length} • CT ${PACKS.ct.images.length} • MRI ${PACKS.mri.images.length}`;
+
+    resetGame();
+    lastTs = performance.now();
+    requestAnimationFrame(loop);
+  });
+
+  btnPause.addEventListener("click", () => togglePause());
+
+  statusPill.innerHTML = "Press <b>Start</b>";
+  syncUI();
+})();
+</script>
+</body>
+</html>
